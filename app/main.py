@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Request
 load_dotenv()
 
 from app.github import get_installation_access_token, get_pull_request_files
+from app.llm import review_pull_request
 
 app = FastAPI(
     title="AI GitHub Engineering Assistant",
@@ -91,22 +92,33 @@ async def github_webhook(request: Request):
             )
 
             print(f"Changed files: {len(changed_files)}")
+            print("Sending pull request to Gemini for review...")
 
-            for file in changed_files:
-                print("-" * 60)
-                print(f"File: {file['filename']}")
-                print(f"Status: {file['status']}")
-                print(
-                    f"Changes: +{file['additions']} "
-                    f"-{file['deletions']}"
-                )
+            review = await review_pull_request(
+                title=pull_request["title"],
+                description=pull_request.get("body") or "",
+                changed_files=changed_files,
+            )
 
-                patch = file.get("patch")
+            print("\n" + "=" * 60)
+            print("AI PULL REQUEST REVIEW")
+            print("=" * 60)
 
-                if patch:
-                    print("Patch:")
-                    print(patch)
-                else:
-                    print("Patch unavailable.")
+            print(f"\nSummary:\n{review.summary}")
+
+            if not review.findings:
+                print("\nNo issues found.")
+
+            for index, finding in enumerate(review.findings, start=1):
+                print("\n" + "-" * 60)
+                print(f"Finding #{index}")
+                print(f"Category: {finding.category}")
+                print(f"Severity: {finding.severity}")
+                print(f"File: {finding.file}")
+                print(f"Issue: {finding.description}")
+                print(f"Why it matters: {finding.explanation}")
+                print(f"Suggestion: {finding.suggestion}")
+
+            print("\n" + "=" * 60)
 
     return {"status": "received"}
